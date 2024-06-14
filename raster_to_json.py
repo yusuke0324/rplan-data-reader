@@ -5,7 +5,7 @@ import numpy as np
 from shapely.geometry import Polygon
 # from descartes.patch import PolygonPatch
 from read_dd import read_data
-
+import os
 import warnings
 
 
@@ -282,25 +282,31 @@ def raster_to_json(line, print_door_warning):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Structured3D 3D Visualization")
-    parser.add_argument("--path", required=True,
-                        help="dataset path", metavar="DIR")
+    parser.add_argument("--folder", required=True,
+                        help="dataset folder", metavar="DIR")
     return parser.parse_args()
-
 
 def main():
     args = parse_args()
-    line=args.path
+    folder = args.folder
 
-    try:
-        raster_to_json(line, print_door_warning=False)
-    except (AssertionError, ValueError, IndexError) as e:
-        fp_id = line.split("/")[-1].split(".")[0]
+    for filename in os.listdir(folder):
+        if filename.endswith(".png"):
+            line = os.path.join(folder, filename)
+            try:
+                raster_to_json(line, print_door_warning=False)
+            except (AssertionError, ValueError, IndexError) as e:
+                fp_id = line.split("/")[-1].split(".")[0]
+                os.makedirs("failed_rplan_json", exist_ok=True)
+                with open(f"failed_rplan_json/{fp_id}", "w") as f:
+                    f.write(str(e))
 
-        with open(f"failed_rplan_json/{fp_id}", "w") as f:
-            f.write(str(e))
+            fp_id = line.split("/")[-1].split(".")[0]
+            json_file = f"rplan_json/{fp_id}.json"
+            if not os.path.exists(json_file):
+                print(f"Warning: {json_file} not found.")
 
 if __name__ == "__main__":
-
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         main()

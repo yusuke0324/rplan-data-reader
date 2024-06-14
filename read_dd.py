@@ -3,20 +3,25 @@ from PIL import Image
 import mask_to_poly as mr
 
 def read_door(door_img,img,tmp_diff):
+	# door_imgはbinary image
+	# imgはおそらくRGB
+	# 多分だけどもとのdoor imgとimgを，新しいdoor画像に書き換えてる(もっと正規化したもの．)
+	# 多分だけど，ドアのラベルが与えられた画像になってる
+
 	tmp3=door_img.copy()
 	tmp4=door_img.copy()
 	for k in range(256):
 		for h in range(256):
 			has=[]
-			for knm in range(10):
+			for knm in range(10): #knmはどこにも使ってない模様
 				has.append(0)
-			if(tmp4[k][h]==1):
+			if(tmp4[k][h]==1): # その座標がdoorだったら
 				p=img[k-tmp_diff-4:k+tmp_diff+4,h-tmp_diff-4:h+tmp_diff+4,2]
 				s=p[np.nonzero(p)]
 				if(len(s)==0):
 					continue
 				r=[]
-				kmmmm=s[0]
+				kmmmm=s[0] # kmmmmも使ってない．謎すぎる
 				for t in range(len(s)):
 					if(t==0):
 						r.append(s[t])
@@ -111,9 +116,19 @@ def sort_corners(corners ,k_d):
 	return coords
 			
 def read_data(line):
+	''' 多分以下を返してる
+		rms_type:部屋のタイプのリスト(ドア:17, エントランス:15を含む)
+		poly: 各部屋の座標セットのリスト
+		doors:ドアの位置を表す座標[始点X, 始点Y, 終点X, 終点Y]のリスト
+		walls:壁の位置を表す座標 [始点X, 始点Y, 終点X, 終点Y, -1, 部屋タイプID, 部屋のindex, -1, 0]のリスト
+		out: 処理の成功または失敗を表す整数値。1 は成功を、-1 や -3 などは異なる失敗理由を示しています。
+		XとYは，画像で表示した時の軸であることに注意．通常画像に対しての座標はimg[Y, X]のようindexする
+		多分左回りに左上の点から(例えば四角形なら)[左上x,左上y,左下x,左下y][左下xy, 右下xy][右下xy, 右上xy][右上xy, 左上xy]という4つで表してる
+
+	'''
 	poly=[]
 	img = np.asarray(Image.open(line))
-	dec=0
+	dec=0 # スキップしたドアの数?
 	img_room_type=img[:,:,1]
 	img_room_number=img[:,:,2]
 	wall_img=np.zeros((256, 256))
@@ -126,7 +141,9 @@ def read_data(line):
 	room_no=img_room_number.max()
 	room_imgs=[]
 	rm_types=[]
+	# それぞれの部屋のタイプと部屋の画像をリストに入れる
 	for i in range(room_no):
+		# 部屋の画像はbinaryのマスク
 		room_img=np.zeros((256, 256))
 		for k in range(256):
 			for h in range(256):
@@ -168,6 +185,7 @@ def read_data(line):
 	walls=[]
 	doors=[]
 	rm_type=rm_types
+	# room_imgs内の各部屋画像に対して、周囲の壁を修正する
 	for t in range(len(room_imgs)):
 		tmp=room_imgs[t]
 		for k in range(254):
@@ -188,24 +206,31 @@ def read_data(line):
 					tmp[h][k+1] =0
 
 		room_imgs[t]=tmp
+		# 部屋のポリゴン取得
 		poly2=mr.get_polygon(room_imgs[t])
+		# LinearRing の各頂点の座標を含むイテラブル（通常はタプルのシーケンス）です。各タプルは (x, y) の形式（2次元の場合
 		coords_1=list(poly2.exterior.coords)
 		coords=[]
 		for kn in range(len(coords_1)):
+			# [y, x, 0, 0, t, rm_type[t]] に変換．tは部屋番号とrm_type[t]は部屋の種別ID
 			coords.append([list(coords_1[kn])[1],list(coords_1[kn])[0],0,0,t,rm_type[t]]) 
 		p=0
 		for c in range(len(coords)-1):
+			# [始Y, 始X, 終Y, 終X, -1, 部屋タイプID, 部屋のindex, -1, 0]
 			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,coords[c][5],coords[c][4],-1,0])
 		p=len(coords)-1
-		poly.append(p)		
+		poly.append(p)
+	# imgは最初のnp array
+	# channel1には部屋の種別が入ってる	
 	tmp=img[:,:,1]
 
 
+	# こっからはドア
 	door_img=np.zeros((256, 256))
 	doors_img=[]		
 	for k in range(256):
 		for h in range(256):
-			if(tmp[k][h]==17):
+			if(tmp[k][h]==17): # 17がドアっぽい
 				door_img[k][h]=1
 	
 	tmp=door_img
@@ -214,6 +239,7 @@ def read_data(line):
 	for k in range(2,254):
 		for h in range(2,254):
 			if(tmp[k][h]==1):
+				# コーナーを探してるのかも
 				if((tmp[k-1][h]==0) & (tmp[k-1][h-1]==0)&(tmp[k][h-1]==0)):
 					coords.append([h,k,0,0])
 				elif (tmp[k+1][h]==0)&(tmp[k+1][h-1]==0)&(tmp[k][h-1]==0):
@@ -230,15 +256,17 @@ def read_data(line):
 					coords.append([h,k,0,0])				
 				elif(tmp[k-1][h]==1) & (tmp[k][h-1]==1) & (tmp[k-1][h-1]==0):
 					coords.append([h,k,0,0])
-					
+	# 最小距離を見つけるための比較基準?		
 	tmp_diff=1000000   
 	p_x_1=coords[0][0]
+	# coords リストの最初の座標から始めて、リスト内の他の全ての座標とのX軸における距離を計算し、その最小値を tmp_diff に更新
 	for k in range(1, len(coords)):
 		p_x_2=coords[k][0]
 		tmp_dif=abs(p_x_1-p_x_2)
 		if(tmp_dif<tmp_diff)&(tmp_dif>1):
 			tmp_diff=tmp_dif
 	p_y_1=coords[0][1]
+	# どうようにy軸での最小値も
 	for k in range(1, len(coords)):
 		p_y_2=coords[k][1]
 		tmp_dif=abs(p_y_1-p_y_2)
@@ -248,7 +276,7 @@ def read_data(line):
 	door_imgs=read_door(door_img,img,tmp_diff)
 	door_no=int(door_imgs.max())
 	door_tp=[]
-	for i in range(door_no):
+	for i in range(door_no): # 各ドアに対してdoor_imgを作る．部屋と同じ感じだ
 		door_img=np.zeros((256, 256))
 		for k in range(256):
 			for h in range(256):
@@ -258,25 +286,29 @@ def read_data(line):
 	for t in range(len(doors_img)):
 		tmp=doors_img[t]
 		kpp=np.max(tmp)
-		if(kpp<=0):
+		if(kpp<=0): # 画像の有効性チェック．0以下な場合はスキップ．
 			dec=dec+1
 			continue
-		poly2=mr.get_polygon(doors_img[t])
+		poly2=mr.get_polygon(doors_img[t]) # 画像からポリゴン生成
 		coords_1=list(poly2.exterior.coords)#
 		coords=[]
 		for kn in range(len(coords_1)):
 			coords.append([list(coords_1[kn])[1],list(coords_1[kn])[0],0,0,t,17]) 
 		p=0
 		for c in range(len(coords)-1):
+			# [始Y,始X,終Y,終X, -1, 17, 多分ドアのindex?,-1, 0] 
 			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,17,len(rms_type)+coords[c][4]-dec,-1,0])
 			doors.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1]])
 		p=len(coords)-1
 		poly.append(p)
+	
+
+	# ==ここからはエントランス=====
 	tmp=img[:,:,1]
 	en_img=np.zeros((256, 256))
 	for k in range(256):
 		for h in range(256):
-			if(tmp[k][h]==15):
+			if(tmp[k][h]==15): # 15がエントランス？
 				en_img[k][h]=1
 	tmp=en_img
 	coords=[]
