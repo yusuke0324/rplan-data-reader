@@ -1,6 +1,8 @@
 import numpy as np 
 from PIL import Image
 import mask_to_poly as mr
+from scipy.ndimage import binary_fill_holes
+
 
 def read_door(door_img,img,tmp_diff):
 	# door_imgはbinary image
@@ -358,7 +360,19 @@ def read_data(line):
 			doors.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1]])
 		p=len(coords)-1
 		poly.append(p)
-	
+
+	# 外壁境界の情報を保持
+	# 最後のchannelに外壁情報があるので[:, :, 0]で取得
+	exterior_wall_mask = (img[:, :, 0] > 0).astype(np.uint8) # 外壁の線をmaskにし2値画像にする
+	# 中側を埋めて中/外の完全な2値maskにする(こうしないと，polygonが二つ作られて無駄に二つ同じ座標が出てきてしまう)
+	filled_mask = binary_fill_holes(exterior_wall_mask).astype(np.uint8)
+	# 中側のmask - 外壁mask - 外壁の内側mask (他のedges等は部屋の内側の頂点をとってるっぽいのでそれに合わせる)
+	interiro_mask = filled_mask - exterior_wall_mask
+	# 外壁の内側の座標を
+	boundary_coords = list(mr.get_polygon(interiro_mask).exterior.coords)
+	# どうやら他のedgesとかとx, yが逆になってるみたいなので入れ替える
+	boundary_coords = [(y, x) for x, y in boundary_coords]
+
 	no_doors=int(len(doors)/4)
 	rms_type=rm_type
 	for i in range(no_doors-1):
@@ -383,5 +397,5 @@ def read_data(line):
 		out=-4	
 		h1.write(line)"""
 	assert(out==1), f"error in reading the file {line}, {out=} but expected out==1"
-	return rms_type,poly,doors,walls,out
+	return rms_type,poly,doors,walls,out,boundary_coords
 	

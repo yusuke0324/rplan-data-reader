@@ -7,9 +7,10 @@ from shapely.geometry import Polygon
 from read_dd import read_data
 import os
 import warnings
+from multiprocessing import Pool, cpu_count
 
 
-def raster_to_json(line, print_door_warning):
+def raster_to_json(line, print_door_warning, save=True):
     """ convert extracted data from rasters to housegan ++ data format :  extract rooms type, bbox, doors, edges and neigbour rooms
                 
     """
@@ -21,7 +22,7 @@ def raster_to_json(line, print_door_warning):
     bbox_y2=[]
     walls=[]
 
-    room_type,poly,doors_, walls,out=read_data(line)
+    room_type,poly,doors_, walls,out, boundary_coords=read_data(line)
 
     d=[]
     all_doors=[]
@@ -268,43 +269,52 @@ def raster_to_json(line, print_door_warning):
     info['boxes'] = bboxes
     info['edges'] = edges
     info['ed_rm'] = ed_rm
+    info['boundary_coords'] = boundary_coords
 
     # print(bboxes)
    
     fp_id = line.split("/")[-1].split(".")[0]
   
     ### saving json files
-    with open(f"rplan_json/{fp_id}.json","w") as f:
-         json.dump(info, f)
+    if save:
+        with open(f"rplan_json/{fp_id}.json","w") as f:
+             json.dump(info, f)
+    else:
+        return info
 
 
+def process_file(line):
+    try:
+        raster_to_json(line, print_door_warning=False)
+    except (AssertionError, ValueError, IndexError) as e:
+        fp_id = line.split("/")[-1].split(".")[0]
+        os.makedirs("failed_rplan_json", exist_ok=True)
+        with open(f"failed_rplan_json/{fp_id}", "w") as f:
+            f.write(str(e))
+    
+    fp_id = line.split("/")[-1].split(".")[0]
+    json_file = f"rplan_json/{fp_id}.json"
+    if not os.path.exists(json_file):
+        print(f"Warning: {json_file} not found.")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Structured3D 3D Visualization")
     parser.add_argument("--folder", required=True,
                         help="dataset folder", metavar="DIR")
+    parser.add_argument("--cores", type=int, default=cpu_count(),
+                        help="number of CPU cores to use")
     return parser.parse_args()
 
 def main():
     args = parse_args()
     folder = args.folder
+    num_cores = args.cores
 
-    for filename in os.listdir(folder):
-        if filename.endswith(".png"):
-            line = os.path.join(folder, filename)
-            try:
-                raster_to_json(line, print_door_warning=False)
-            except (AssertionError, ValueError, IndexError) as e:
-                fp_id = line.split("/")[-1].split(".")[0]
-                os.makedirs("failed_rplan_json", exist_ok=True)
-                with open(f"failed_rplan_json/{fp_id}", "w") as f:
-                    f.write(str(e))
+    files = [os.path.join(folder, filename) for filename in os.listdir(folder) if filename.endswith(".png")]
 
-            fp_id = line.split("/")[-1].split(".")[0]
-            json_file = f"rplan_json/{fp_id}.json"
-            if not os.path.exists(json_file):
-                print(f"Warning: {json_file} not found.")
+    with Pool(processes=num_cores) as pool:
+        pool.map(process_file, files)
 
 if __name__ == "__main__":
     with warnings.catch_warnings():

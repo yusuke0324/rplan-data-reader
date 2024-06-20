@@ -5,6 +5,7 @@ services:
     build: .
     volumes:
       - .:/work
+      - /Users/me/work/Research/floorplan/floorplangen/:/work/floorplangen
     ports:
       - "9999:8888"
       - "5678:5678" # デバッグ用
