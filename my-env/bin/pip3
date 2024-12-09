@@ -1,4 +1,4 @@
-#!/Users/me/work/Research/floorplan/Housegan-data-reader/my-env/bin/python3
+#!/home/yusuke/rplan-data-reader/my-env/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

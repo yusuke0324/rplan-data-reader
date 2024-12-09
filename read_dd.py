@@ -2,6 +2,7 @@ import numpy as np
 from PIL import Image
 import mask_to_poly as mr
 from scipy.ndimage import binary_fill_holes
+import cv2
 
 
 def read_door(door_img,img,tmp_diff):
@@ -120,9 +121,9 @@ def sort_corners(corners ,k_d):
 def read_data(line):
 	''' 多分以下を返してる
 		rms_type:部屋のタイプのリスト(ドア:17, エントランス:15を含む)
-		poly: 各部屋の座標セットのリスト
+		poly: 各部屋の頂点のリスト
 		doors:ドアの位置を表す座標[始点X, 始点Y, 終点X, 終点Y]のリスト
-		walls:壁の位置を表す座標 [始点X, 始点Y, 終点X, 終点Y, -1, 部屋タイプID, 部屋のindex, -1, 0]のリスト
+		walls:壁の位置を表す座標 [始点X, 始点Y, 終点X, 終点Y, -1, 部屋タイプID, 部屋のindex, -1, 0, 0]のリスト(オリジナルから一つ増やした(index=9).外壁フラグ)
 		out: 処理の成功または失敗を表す整数値。1 は成功を、-1 や -3 などは異なる失敗理由を示しています。
 		XとYは，画像で表示した時の軸であることに注意．通常画像に対しての座標はimg[Y, X]のようindexする
 		多分左回りに左上の点から(例えば四角形なら)[左上x,左上y,左下x,左下y][左下xy, 右下xy][右下xy, 右上xy][右上xy, 左上xy]という4つで表してる
@@ -219,7 +220,7 @@ def read_data(line):
 		p=0
 		for c in range(len(coords)-1):
 			# [始Y, 始X, 終Y, 終X, -1, 部屋タイプID, 部屋のindex, -1, 0]
-			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,coords[c][5],coords[c][4],-1,0])
+			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,coords[c][5],coords[c][4],-1,0, 0])
 		p=len(coords)-1
 		poly.append(p)
 	# imgは最初のnp array
@@ -299,7 +300,7 @@ def read_data(line):
 		p=0
 		for c in range(len(coords)-1):
 			# [始Y,始X,終Y,終X, -1, 17, 多分ドアのindex?,-1, 0] 
-			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,17,len(rms_type)+coords[c][4]-dec,-1,0])
+			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,17,len(rms_type)+coords[c][4]-dec,-1,0, 0])
 			doors.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1]])
 		p=len(coords)-1
 		poly.append(p)
@@ -356,7 +357,7 @@ def read_data(line):
 			coords.append([list(coords_1[kn])[1],list(coords_1[kn])[0],0,0,t,15]) 
 		p=0
 		for c in range(len(coords)-1):
-			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,15,rmpn+len(rms_type)+coords[c][4]-dec,-1,0])
+			walls.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1],-1,15,rmpn+len(rms_type)+coords[c][4]-dec,-1,0, 0])
 			doors.append([coords[c][0],coords[c][1],coords[c+1][0],coords[c+1][1]])
 		p=len(coords)-1
 		poly.append(p)
@@ -367,11 +368,34 @@ def read_data(line):
 	# 中側を埋めて中/外の完全な2値maskにする(こうしないと，polygonが二つ作られて無駄に二つ同じ座標が出てきてしまう)
 	filled_mask = binary_fill_holes(exterior_wall_mask).astype(np.uint8)
 	# 中側のmask - 外壁mask - 外壁の内側mask (他のedges等は部屋の内側の頂点をとってるっぽいのでそれに合わせる)
-	interiro_mask = filled_mask - exterior_wall_mask
+	interior_mask = filled_mask - exterior_wall_mask
 	# 外壁の内側の座標を
-	boundary_coords = list(mr.get_polygon(interiro_mask).exterior.coords)
+	boundary_coords = list(mr.get_polygon(interior_mask).exterior.coords)
 	# どうやら他のedgesとかとx, yが逆になってるみたいなので入れ替える
 	boundary_coords = [(y, x) for x, y in boundary_coords]
+
+	# 部屋の頂点が外壁境界上にあるかを確認し，あればフラグをつける(外壁attention mapに使用予定)
+	# 外壁の内側の頂点をboundary coordsとしているので，外壁内側の1pixelマスクを作成し，部屋の頂点がそのマスク上にあるかで判定する
+	# 内側の1ピクセルマスクを作成するために膨張と縮小を行います
+	kernel = np.ones((3, 3), np.uint8)
+	# 内側マスクを縮小して内側に1ピクセル縮小したマスクを作成
+	interior_mask_erode = cv2.erode(interior_mask, kernel, iterations=1)
+	# 元の内側マスクから内側に1ピクセル縮小したマスクを引くことで、内側の1ピクセルだけの壁マスクを得る
+	inner_wall_mask = interior_mask - interior_mask_erode
+
+	# 各頂点がinner_wall_mask上にあれば，その頂点は外壁なので，フラグで保存しておく->やはりいらないなこれ
+	for wall in walls:
+		# 始点と終点の座標
+		start_coord = (int(wall[0]), int(wall[1])) #y, x
+		end_coord = (int(wall[2]), int(wall[3])) #y, x
+		
+		if inner_wall_mask[start_coord[1], start_coord[0]] == 1 or inner_wall_mask[end_coord[1], end_coord[0]] == 1:
+			# 外壁の場合、フラグまたはインデックスを追加
+			wall[-1] = 1  # フラグとして1を追加 (例: 外壁の場合)(オリジナルからフラグ用に一つ値を追加している)
+			# または boundary_coordsのindexを保存するなら
+			# wall[-1] = boundary_coords.index(start_coord)  # 例えば、始点のindexを保存
+		else:
+			wall[-1] = 0  # 内壁の場合、フラグとして0を追加．もともと0が入っている想定
 
 	no_doors=int(len(doors)/4)
 	rms_type=rm_type
@@ -397,5 +421,5 @@ def read_data(line):
 		out=-4	
 		h1.write(line)"""
 	assert(out==1), f"error in reading the file {line}, {out=} but expected out==1"
-	return rms_type,poly,doors,walls,out,boundary_coords
+	return rms_type,poly,doors,walls,out,boundary_coords#, inner_wall_mask
 	
