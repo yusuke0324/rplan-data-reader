@@ -265,7 +265,7 @@ def raster_to_json(line, print_door_warning, save=True):
         # patch = PolygonPatch(polygon, facecolor=semantics_cmap["bedroom"], alpha=0.7)
         # ax.add_patch(patch)
    
-    info['room_type'] = room_type
+    info['room_type'] = rms_type
     info['boxes'] = bboxes
     info['edges'] = edges
     info['ed_rm'] = ed_rm

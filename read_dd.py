@@ -160,7 +160,8 @@ def read_data(line):
 		if(rm_t==0):
 			rm_types.append(1)		
 		elif(rm_t==1):
-			rm_types.append(3)
+			# rm_types.append(3)
+			rm_types.append(9)
 		elif(rm_t==2):
 			rm_types.append(2)		
 		elif(rm_t==3):
@@ -170,7 +171,8 @@ def read_data(line):
 		elif(rm_t==5):
 			rm_types.append(3)
 		elif(rm_t==6):
-			rm_types.append(8)
+			# rm_types.append(8)
+			rm_types.append(3)
 		elif(rm_t==7):
 			rm_types.append(3)
 		elif(rm_t==8):
