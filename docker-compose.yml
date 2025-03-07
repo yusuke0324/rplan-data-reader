@@ -8,7 +8,7 @@ services:
       - /Users/me/work/Research/floorplan/floorplangen/:/work/floorplangen
     ports:
       - "9999:8888"
-      - "5678:5678" # デバッグ用
+      # - "5678:5678" # デバッグ用
     # command: jupyter lab --ip=0.0.0.0 --allow-root --NotebookApp.token='' --NotebookApp.notebook_dir='/work'
     # environment:
       # - JUPYTER_ENABLE_LAB=yes

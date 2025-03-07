@@ -22,19 +22,19 @@ def raster_to_json(line, print_door_warning, save=True):
     bbox_y2=[]
     walls=[]
 
-    room_type,poly,doors_, walls,out, boundary_coords=read_data(line)
+    rms_type,poly,doors,walls,out,boundary_coords=read_data(line)
 
     d=[]
     all_doors=[]
-    for i in range(1,len(doors_)+1):
+    for i in range(1,len(doors)+1):
         if((i)%4==0 ) & (i+1!=1):
-            d.append(doors_[i-1])
+            d.append(doors[i-1])
             all_doors.append(d)
             d=[]
         elif(i==1):
             d=[]
         if(i%4!=0):
-            d.append(doors_[i-1])
+            d.append(doors[i-1])
     kh=0
     al_dr=0
     for hd in range(len(all_doors)):
@@ -265,7 +265,7 @@ def raster_to_json(line, print_door_warning, save=True):
         # patch = PolygonPatch(polygon, facecolor=semantics_cmap["bedroom"], alpha=0.7)
         # ax.add_patch(patch)
    
-    info['room_type'] = room_type
+    info['room_type'] = rms_type
     info['boxes'] = bboxes
     info['edges'] = edges
     info['ed_rm'] = ed_rm
